@@ -1,0 +1,13 @@
+{
+    "cmake.sourceDirectory": "/root/xv6-riscv-riscv",
+    "files.associations": {
+        "kmalloc_sizes.h": "c",
+        "proc.h": "c",
+        "types.h": "c",
+        "stat.h": "c",
+        "defs.h": "c",
+        "user.h": "c",
+        "memlayout.h": "c",
+        "typeinfo": "c"
+    }
+}
