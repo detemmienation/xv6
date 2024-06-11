@@ -20,6 +20,5 @@
 #define SYS_link   19
 #define SYS_mkdir  20
 #define SYS_close  21
-
 #define SYS_getprocs  22  // 假设22是未被使用的系统调用号
 #define SYS_test_free   23

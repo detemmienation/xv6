@@ -10,12 +10,15 @@
 #include "defs.h"
 #include "cache.h"
 #include "proc.h"
+#include <stdbool.h>
 
 
 ////////////////////////////////////
 
 #define MAX_ORDER 23 // 2^14 = 16384 (16K), but considering sizes up to 8M, we adjust the order accordingly
 #define BIAS 0x800000L  
+#define N 100 // 或者你需要的任何数量
+
 
 typedef struct buddy_block //数据结构本身要16B，不能分配比他还小的空间
 {
@@ -25,19 +28,18 @@ typedef struct buddy_block //数据结构本身要16B，不能分配比他还小
 } buddy_block;
 
 buddy_block *free_lists[MAX_ORDER + 1]; // 每个列表头节点指向一个特定大小的空闲块链表
+//char str[30]; // 确保有足够的空间来存储地址
+//sprintf(str, "%p", (void*)new_block);
+char *address[MAX_ORDER+1];
+int state[MAX_ORDER+1];
 
 void init_buddy_system()
 { 
 
-  void *base = (void *)0x87800000L;
+  void *base = (void *)0x87800000L; //freememory的起始地址（？
   char *base_space = (void *)0x87000000L;
-
-  //void *base = (void *)0x778000000L;
-  //char *base_space = (void *)0x77000000;
-
-  //void *base = (void *)0x078000000L;
-  //char *base_space = (void *)0x07000000L;
-
+  //void *base = (void *)0x880000000L;
+  //char *base_space = (void *)0x87800000;
   /* int total_memory = 8 * 1024 * 1024; // 8MB */
   /* int block_size = total_memory;  */     // 最初只有一个8M的块
 
@@ -45,6 +47,12 @@ void init_buddy_system()
   for (int i = 0; i <= MAX_ORDER; i++)
   {
     free_lists[i] = NULL;
+  }
+
+  //state值
+    for (int i = 0; i <= MAX_ORDER; i++)
+  {
+    state[i] = 0;
   }
 
   // 将8M块添加到空闲列表
@@ -55,15 +63,16 @@ void init_buddy_system()
   free_lists[MAX_ORDER] = block;
 }
 
-void *buddy_alloc(int order)
+void *buddy_alloc(int order)//输入为order
 {
   printf("------------<BUDDY-ALLOC-BEGIN>------------\n");
   if (order > MAX_ORDER)
     return NULL; // 请求大小超出最大限制
   if (order < 5){
-    printf("Too tiny! Must lager then 24 Bytes.\n");
+    printf("Too tiny! Must lager then 24 Bytes.\n");//2^5=32 bytes
     return NULL; // 请求大小超出最小限制
   }
+
   // 找到第一个足够大的空闲块
   int current_order = order;
   while (current_order <= MAX_ORDER && free_lists[current_order] == NULL)
@@ -89,8 +98,18 @@ void *buddy_alloc(int order)
     new_block->space = (char*)((uintptr_t)new_block-BIAS);//涉及指针加减法
     new_block->next = free_lists[current_order];
     free_lists[current_order] = new_block;
-    printf("block-address:%p,  generated blocks:%p, generated blocks'size %d\n",block->space,new_block,new_block->order);
+    //printf("block-address:%p,  generated blocks:%p, generated blocks'size %d\n",block->space,new_block,new_block->order);
+    //int i;
+    // i=new_block->order-5;
+    // 存储每次操作生成的地址到 address 数组中对应的索引位置
+    // address[current_order-5] = new_block->space;
+    address[current_order] = new_block->space;
+    state[current_order]  = 0;
+
+    //for(i=new_block->order-5,i>=0,i--)  
+    printf("order:%d, blocks:%p, size:%d, state:%d\n ",new_block->order,new_block,new_block->order,0);
   }
+
   printf("-------------<BUDDY-ALLOC-DONE>------------\n");
   return block->space;
 }
@@ -260,6 +279,24 @@ struct
   uint used_pages;  // 已使用页数
 } info;
 
+int print_state() {
+    // 打印表头
+    printf("Order\t");
+    for (int i = 5; i <= 23; ++i) {
+        printf("%d\t", i);
+    }
+    printf("\n");
+
+    // 打印状态
+    printf("State\t");
+    for (int i = 5; i <= 23; ++i) {
+        printf("%d\t", state[i]);
+    }
+    printf("\n");
+
+    return 0;
+}
+
 void *
 test_free(void)
 {
@@ -276,22 +313,39 @@ test_free(void)
   }
   release(&kmem.lock);
   // 计算已使用页数
+
   info.used_pages = info.total_pages - info.free_pages;
   printf("TOTAL Pages: %d\n", TOTALPAGES);
   printf("Used Pages: %d\n", info.used_pages);
   printf("Free Pages: %d\n", info.free_pages);
 
-printf("------------------------------Buddy-system test-------------------------------\n");
-    printf("-------------First_buddy_alloc_test------------\n");
+    printf("------------------------------test-------------------------------\n");
+    printf("-------------alloc_test------------\n");
+    printf("TOTAL Pages: %d\n", TOTALPAGES);
+    printf("Used Pages: %d\n", info.used_pages);
+    printf("Free Pages: %d\n", info.free_pages);
     char* ptr = (char*)buddy_alloc(5);
     if (ptr) {
         memmove(ptr, "ABC", 4); // 注意："ABC" 包含隐含的 '\0' 终止字符
+        for(int i=0;i<=23;i++){
+          if (address[i]== (void*)ptr){
+            printf("order:%d", i);
+            state[i]=1;
+          }
+        }
+        print_state();
         printf("space-address:%p, content:%s\n\n", (void*)ptr, ptr);
     }
-
-    printf("-------------Second_buddy_alloc_test------------\n");
     char* ptr1 = (char*)buddy_alloc(8);
     if (ptr1) {
+        for(int i=0;i<=23;i++){
+          //printf("adress:%p", address[i]);
+          if (address[i]== (void*)ptr1){
+            state[i]=1;
+            printf("order:%d\n", i);
+          }
+        }
+                print_state();
         memmove(ptr1, "Hello", 6); // 包含 '\0' 终止字符
         printf("space-address:%p, content:%s\n\n", (void*)ptr1, ptr1);
     }
@@ -299,6 +353,14 @@ printf("------------------------------Buddy-system test-------------------------
     printf("-------------Third_buddy_alloc_test------------\n");
     char* ptr2 = (char*)buddy_alloc(16);
     if (ptr2) {
+          for(int i=0;i<=23;i++){
+          //printf("adress:%p", address[i]);
+          if (address[i]== (void*)ptr2){
+            state[i]=1;
+            printf("order:%d\n", i);
+          }
+        }
+                print_state();
         memmove(ptr2, "World", 6); // 包含 '\0' 终止字符
         printf("space-address:%p, content:%s\n\n", (void*)ptr2, ptr2);
     }
@@ -310,23 +372,10 @@ printf("------------------------------Buddy-system test-------------------------
 
     // 释放其它内存块
     buddy_free(ptr, 5);
-    printf("After free, ptr2 address: %p, content:%s--not been freshed", (void*)ptr2,ptr2);
+    printf("After free, ptr2 address: %p, content:%s--not been freshed", (void*)ptr,ptr);
 
     buddy_free(ptr2, 16);
-    printf("After free, ptr address: %p, content:%s--not been freshed", (void*)ptr,ptr);
-
-
-
-// printf("\n\n------------------------------Slab-system test-------------------------------\n");
-//     printf("-------------First_kmalloc_test------------\n");
-//     void* ptr3=kmalloc(512, 1); 
-//     if(ptr3)
-//     printf("kmalloc return space address:%p\n",ptr3); 
-
-//     printf("-------------Second_kmalloc_test------------\n");
-//     void* ptr4=kmalloc(1024, 1); 
-//     if(ptr4)
-//     printf("kmalloc return space address:%p\n",ptr4); 
+    printf("After free, ptr address: %p, content:%s--not been freshed", (void*)ptr2,ptr2);
 
   return (void *)&info;
 }
